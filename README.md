@@ -3,6 +3,7 @@ This project ports our original code in Theano to Tensorflow. Still under develo
 # Introduction
 
 Implementation of Neural Language Correction (http://arxiv.org/abs/1603.09727) on Tensorflow.
+But this is a chinese version!!!
 
 # Training
 
