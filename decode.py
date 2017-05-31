@@ -71,9 +71,9 @@ def create_model(session, vocab_size, forward_only):
     ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
     if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
         print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
-        saver = tf.train.import_meta_graph(ckpt.model_checkpoint_path+'.meta', clear_devices=True)
-        saver.restore(session, ckpt.model_checkpoint_path)
-        # model.saver.restore(session, ckpt.model_checkpoint_path)
+        # saver = tf.train.import_meta_graph(ckpt.model_checkpoint_path+'.meta', clear_devices=True)
+        # saver.restore(session, ckpt.model_checkpoint_path)
+        model.saver.restore(session, ckpt.model_checkpoint_path)
     else:
         print("Created model with fresh parameters.")
         session.run(tf.global_variables_initializer())
