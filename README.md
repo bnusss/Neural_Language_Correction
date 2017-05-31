@@ -17,6 +17,8 @@ To train character level model (for chinese, we'd better only use this mode <chi
 
     $ python decode.py --data_dir /dir/to/vocab_test/data (vocab.dat&test.x.txt) --train_dir /dir/to/save/train_data
 
+**NOTICE:** you need use **kenlm** and **jieba<segment tools>** toolkits to create a chinese language Model (ie. .arpa file or a binary version), and then install **kenlm** python packages to load Language model and use it. You can read this [kenlm toolkits build and python package install ](https://github.com/kpu/kenlm) and [jieba chinese segmentation tools](https://github.com/whtsky/jieba/)
+
 # Tensorflow Dependency
 
 - Tensorflow 1.1.0
