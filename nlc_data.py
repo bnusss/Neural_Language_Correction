@@ -22,6 +22,7 @@ import re
 import gzip
 import os
 import re
+import codecs
 import tarfile
 
 from six.moves import urllib
@@ -134,19 +135,17 @@ def create_vocabulary(vocabulary_path, data_paths, max_vocabulary_size,
               (vocabulary_path, str(data_paths)))
         vocab = {}
         for path in data_paths:
-            with gfile.GFile(path, mode="rb") as f:
+            with codecs.open(path, mode="rb", encoding='utf-8') as f:
                 counter = 0
                 for line in f:
                     counter += 1
                     if counter % 100000 == 0:
                         print("  processing line %d" % counter)
                     # Remove non-ASCII characters
-                    line = remove_nonascii(line)
-                    tokens = tokenizer(
-                        line) if tokenizer else basic_tokenizer(line)
+                    # line = remove_nonascii(line)
+                    tokens = tokenizer(line) if tokenizer else basic_tokenizer(line)
                     for w in tokens:
-                        word = re.sub(_DIGIT_RE, b"0",
-                                      w) if normalize_digits else w
+                        word = re.sub(_DIGIT_RE, b"0", w) if normalize_digits else w
                         if word in vocab:
                             vocab[word] += 1
                         else:
@@ -155,15 +154,15 @@ def create_vocabulary(vocabulary_path, data_paths, max_vocabulary_size,
         print("Vocabulary size: %d" % len(vocab_list))
         if len(vocab_list) > max_vocabulary_size:
             vocab_list = vocab_list[:max_vocabulary_size]
-        with gfile.GFile(vocabulary_path, mode="wb") as vocab_file:
+        with codecs.open(vocabulary_path, mode="wb", encoding='utf-8') as vocab_file:
             for w in vocab_list:
-                vocab_file.write(w + b"\n")
+                vocab_file.write(w + '\n')
 
 
 def initialize_vocabulary(vocabulary_path, bpe=False):
     if gfile.Exists(vocabulary_path):
         rev_vocab = []
-        with gfile.GFile(vocabulary_path, mode="rb") as f:
+        with codecs.open(vocabulary_path, mode="rb", encoding='utf-8') as f:
             rev_vocab.extend(f.readlines())
         rev_vocab = [line.strip('\n') for line in rev_vocab]
         # Call ''.join below since BPE outputs split pairs with spaces
@@ -195,14 +194,12 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,
         print("Tokenizing data in %s" % data_path)
         vocab, _ = initialize_vocabulary(
             vocabulary_path, bpe=(tokenizer == bpe_tokenizer))
-        with gfile.GFile(data_path, mode="rb") as data_file:
+        with codecs.open(data_path, mode="rb", encoding='utf-8') as data_file:
             with gfile.GFile(target_path, mode="w") as tokens_file:
-                counter = 0
-                for line in data_file:
-                    counter += 1
-                    if counter % 100000 == 0:
-                        print("  tokenizing line %d" % counter)
-                    line = remove_nonascii(line)
+                for idx, line in enumerate(data_file):
+                    if idx+1 % 100000 == 0:
+                        print("  tokenizing line %d" % idx)
+                    #line = remove_nonascii(line)
                     token_ids = sentence_to_token_ids(line, vocab, tokenizer,
                                                       normalize_digits)
                     tokens_file.write(

@@ -48,8 +48,8 @@ tf.app.flags.DEFINE_float(
 tf.app.flags.DEFINE_integer(
     "batch_size", 128, "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("epochs", 40, "Number of epochs to train.")
-tf.app.flags.DEFINE_integer("size", 128, "Size of each model layer.")
-tf.app.flags.DEFINE_integer("num_layers", 2, "Number of layers in the model.")
+tf.app.flags.DEFINE_integer("size", 400, "Size of each model layer.")
+tf.app.flags.DEFINE_integer("num_layers", 3, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("max_vocab_size", 40000, "Vocabulary size limit.")
 tf.app.flags.DEFINE_integer("max_seq_len", 100, "Maximum sequence length.")
 tf.app.flags.DEFINE_string("data_dir", "/tmp", "Data directory")
@@ -68,9 +68,8 @@ def create_model(session, vocab_size, forward_only):
         FLAGS.learning_rate, FLAGS.learning_rate_decay_factor, FLAGS.dropout,
         forward_only=forward_only, optimizer=FLAGS.optimizer)
     ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
-    if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
-        logging.info("Reading model parameters from %s" %
-                     ckpt.model_checkpoint_path)
+    if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
+        print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
         model.saver.restore(session, ckpt.model_checkpoint_path)
     else:
         logging.info("Created model with fresh parameters.")

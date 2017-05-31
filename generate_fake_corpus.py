@@ -53,9 +53,9 @@ def generate():
         count_thing()
     proun_dict = pickle.load(open('proun_dict.pkl', 'rb'))
 
-    p1 = 0.2  # prob to change to same proun char
-    p2 = 0.02 # prob to change pinyin
-    fpath = '/home/gl/Documents/zh_tsinghua.nolowercase'
+    p1 = 0.5  # prob to change to same proun char
+    p2 = 0.5 # prob to change pinyin
+    fpath = '/home/gl/Documents/Tsinghua_data/zh_tsinghua.nolowercase'
     with codecs.open(fpath, 'r', encoding='utf-8') as fr:
         new_lines = []
         for idx, line in enumerate(fr):

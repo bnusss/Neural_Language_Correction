@@ -24,7 +24,6 @@ import sys
 import time
 import random
 import string
-import jieba
 
 import numpy as np
 from six.moves import xrange
@@ -111,11 +110,10 @@ def lm_rank(strs, probs):
     if lm is None:
         return strs[0]
     a = FLAGS.alpha
-    lmscores = [lm.score(" ".join(jieba.lcut(s))) / (1 + len(jieba.lcut(s))) for s in strs]
+    lmscores = [lm.score(s) / (1 + len(s.split())) for s in strs]
     probs = [p / (len(s) + 1) for (s, p) in zip(strs, probs)]
-    print("Candidate:")
     for (s, p, l) in zip(strs, probs, lmscores):
-        print(s.encode('utf-8'), p, l)
+        print(s, p, l)
 
     rescores = [(1 - a) * p + a * l for (l, p) in zip(lmscores, probs)]
     rerank = [rs[0] for rs in sorted(enumerate(rescores), key=lambda x: x[1])]
@@ -177,18 +175,14 @@ def decode():
         print("Creating %d layers of %d units." %
               (FLAGS.num_layers, FLAGS.size))
         model = create_model(sess, vocab_size, False)
-        import codecs
-        with codecs.open(FLAGS.data_dir+'/'+FLAGS.tokenizer.lower()+'/test.x.txt', encoding='utf-8') as fr:
-            for sent in fr:
-                print("Original: ", sent.strip().encode('utf-8'))
-                output_sent = fix_sent(model, sess, sent)
-                print("Revised: ", output_sent.encode('utf-8'))
-                print('*'*30)
-        # while True:
-        #     sent = raw_input("Enter a sentence: ")
-        #     output_sent = fix_sent(model, sess, sent.decode('utf-8'))
-        #     print("Candidate: ", output_sent)
 
+        while True:
+            sent = raw_input("Enter a sentence: ")
+            output_sent = fix_sent(model, sess, sent.decode('utf-8'))
+            #print("Candidate: ", output_sent)
+            print("Candidate: ")
+            for sent in output_sent:
+                print(sent)
 
 def main(_):
     decode()

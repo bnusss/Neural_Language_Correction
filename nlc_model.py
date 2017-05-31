@@ -151,8 +151,7 @@ class NLCModel(object):
         self.decoder_cells = []
         # if self.num_layers > 1:
         #     self.decoder_cell = tf.contrib.rnn.GRUCell(self.size)
-        self.attn_cell = GRUCellAttn(
-            self.size, self.encoder_output, scope="DecoderAttnCell")
+        self.attn_cell = GRUCellAttn(self.size, self.encoder_output, scope="DecoderAttnCell")
 
         with tf.variable_scope("Decoder"):
             inp = self.decoder_inputs
@@ -323,13 +322,15 @@ class NLCModel(object):
 
     def bidirectional_rnn(self, inputs, lengths, scope=None):
         name = scope.name or "BiRNN"
-        # Forward direction
+
         cell_fw = tf.contrib.rnn.GRUCell(self.size)
+        cell_bw = tf.contrib.rnn.GRUCell(self.size)
+        # tf.nn.bidirectional_dynamic_rnn()
+        # Forward direction
         with tf.variable_scope(name + "_FW") as fw_scope:
             output_fw, output_state_fw = tf.nn.dynamic_rnn(cell_fw, inputs, time_major=True, dtype=tf.float32,
                                                            sequence_length=lengths, scope=fw_scope)
         # Backward direction
-        cell_bw = tf.contrib.rnn.GRUCell(self.size)
         inputs_bw = tf.reverse_sequence(
             inputs, tf.to_int64(lengths), seq_dim=0, batch_dim=1)
         with tf.variable_scope(name + "_BW") as bw_scope:
