@@ -16,21 +16,20 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from six.moves import xrange
 
-import math
 import os
-import random
 import sys
 import time
-import random
+import math
 import json
+import random
 
 import numpy as np
-from six.moves import xrange
 import tensorflow as tf
 
-import nlc_model
 import nlc_data
+import nlc_model
 
 from util import pair_iter
 from util import get_tokenizer
@@ -38,27 +37,21 @@ from util import get_tokenizer
 import logging
 logging.basicConfig(level=logging.INFO)
 
-tf.app.flags.DEFINE_float("learning_rate", 0.0003, "Learning rate.")
-tf.app.flags.DEFINE_float("learning_rate_decay_factor",
-                          0.95, "Learning rate decays by this much.")
-tf.app.flags.DEFINE_float("max_gradient_norm", 10.0,
-                          "Clip gradients to this norm.")
-tf.app.flags.DEFINE_float(
-    "dropout", 0.15, "Fraction of units randomly dropped on non-recurrent connections.")
-tf.app.flags.DEFINE_integer(
-    "batch_size", 128, "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("epochs", 40, "Number of epochs to train.")
-tf.app.flags.DEFINE_integer("size", 400, "Size of each model layer.")
-tf.app.flags.DEFINE_integer("num_layers", 3, "Number of layers in the model.")
+tf.app.flags.DEFINE_float("learning_rate", 1e-3, "Learning rate.")
+tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.95, "Learning rate decays by this much.")
+tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
+tf.app.flags.DEFINE_float("dropout", 0.15, "Fraction of units randomly dropped on non-recurrent connections.")
+tf.app.flags.DEFINE_integer("batch_size", 256, "Batch size to use during training.")
+tf.app.flags.DEFINE_integer("epochs", 100, "Number of epochs to train.")
+tf.app.flags.DEFINE_integer("size", 200, "Size of each model layer.")
+tf.app.flags.DEFINE_integer("num_layers", 2, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("max_vocab_size", 40000, "Vocabulary size limit.")
 tf.app.flags.DEFINE_integer("max_seq_len", 100, "Maximum sequence length.")
-tf.app.flags.DEFINE_string("data_dir", "/tmp", "Data directory")
-tf.app.flags.DEFINE_string("train_dir", "/tmp", "Training directory.")
-tf.app.flags.DEFINE_string("tokenizer", "CHAR", "BPE / CHAR / WORD.")
+tf.app.flags.DEFINE_string("data_dir", "./data_dir/data", "Data directory")
+tf.app.flags.DEFINE_string("train_dir", "./data_dir/train_data", "Training directory.")
+tf.app.flags.DEFINE_string("tokenizer", "CHAR", "CHAR / WORD.")
 tf.app.flags.DEFINE_string("optimizer", "adam", "adam / sgd")
-tf.app.flags.DEFINE_integer(
-    "print_every", 1, "How many iterations to do per print.")
-
+tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per print.")
 FLAGS = tf.app.flags.FLAGS
 
 
@@ -74,30 +67,29 @@ def create_model(session, vocab_size, forward_only):
     else:
         logging.info("Created model with fresh parameters.")
         session.run(tf.global_variables_initializer())
-        logging.info('Num params: %d' % sum(v.get_shape().num_elements()
-                                            for v in tf.trainable_variables()))
+        logging.info('Num params: %d' % sum(v.get_shape().num_elements() for v in tf.trainable_variables()))
     return model
 
 
 def validate(model, sess, x_dev, y_dev):
     valid_costs, valid_lengths = [], []
+    cost_all = 0
+    step = 0
     for source_tokens, source_mask, target_tokens, target_mask in pair_iter(x_dev, y_dev, FLAGS.batch_size, FLAGS.num_layers):
-        cost = model.test(sess, source_tokens, source_mask,
-                          target_tokens, target_mask)
-        valid_costs.append(cost * target_mask.shape[1])
-        valid_lengths.append(np.sum(target_mask[1:, :]))
-    valid_cost = sum(valid_costs) / float(sum(valid_lengths))
-    return valid_cost
+        cost = model.test(sess, source_tokens, source_mask, target_tokens, target_mask)
+        lengths = np.sum(target_mask, axis=0)
+        mean_length = np.mean(lengths)
+        cost = cost / mean_length 
+        cost_all += cost
+        step += 1
+    return cost_all / step
 
 
 def train():
     """Train a translation model using NLC data."""
     # Prepare NLC data.
     logging.info("Preparing NLC data in %s" % FLAGS.data_dir)
-
-    x_train, y_train, x_dev, y_dev, vocab_path = nlc_data.prepare_nlc_data(
-        FLAGS.data_dir + '/' + FLAGS.tokenizer.lower(), FLAGS.max_vocab_size,
-        tokenizer=get_tokenizer(FLAGS))
+    x_train, y_train, x_dev, y_dev, vocab_path = nlc_data.prepare_nlc_data(FLAGS.data_dir + '/' + FLAGS.tokenizer.lower(), FLAGS.max_vocab_size, tokenizer=get_tokenizer(FLAGS))
     vocab, _ = nlc_data.initialize_vocabulary(vocab_path)
     vocab_size = len(vocab)
     logging.info("Vocabulary size: %d" % vocab_size)
@@ -112,89 +104,63 @@ def train():
         json.dump(FLAGS.__flags, fout)
 
     with tf.Session() as sess:
-        logging.info("Creating %d layers of %d units." %
-                     (FLAGS.num_layers, FLAGS.size))
+        logging.info("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
         model = create_model(sess, vocab_size, False)
 
-        logging.info('Initial validation cost: %f' %
-                     validate(model, sess, x_dev, y_dev))
-
-        if False:
-            tic = time.time()
-            params = tf.trainable_variables()
-            num_params = sum(map(lambda t: np.prod(
-                tf.shape(t.value()).eval()), params))
-            toc = time.time()
-            print ("Number of params: %d (retreival took %f secs)" %
-                   (num_params, toc - tic))
+        tic = time.time()
+        params = tf.trainable_variables()
+        num_params = sum(map(lambda t: np.prod(tf.shape(t.value()).eval()), params))
+        toc = time.time()
+        print ("Number of params: %d (retreival took %f secs)" % (num_params, toc - tic))
 
         epoch = 0
         best_epoch = 0
-        previous_losses = []
-        exp_cost = None
-        exp_length = None
-        exp_norm = None
-        total_iters = 0
-        start_time = time.time()
+        train_costs = []
+        valid_costs = []
+        previous_valid_losses = []
         while (FLAGS.epochs == 0 or epoch < FLAGS.epochs):
             epoch += 1
             current_step = 0
-
-            # Train
+            epoch_cost = 0
             epoch_tic = time.time()
             for source_tokens, source_mask, target_tokens, target_mask in pair_iter(x_train, y_train, FLAGS.batch_size, FLAGS.num_layers):
                 # Get a batch and make a step.
-                tic = time.time()
-
-                grad_norm, cost, param_norm = model.train(
-                    sess, source_tokens, source_mask, target_tokens, target_mask)
-
-                toc = time.time()
-                iter_time = toc - tic
-                total_iters += np.sum(target_mask)
-                tps = total_iters / (time.time() - start_time)
-                current_step += 1
+                grad_norm, cost, param_norm = model.train(sess, source_tokens, source_mask, target_tokens, target_mask)
 
                 lengths = np.sum(target_mask, axis=0)
                 mean_length = np.mean(lengths)
                 std_length = np.std(lengths)
 
-                if not exp_cost:
-                    exp_cost = cost
-                    exp_length = mean_length
-                    exp_norm = grad_norm
-                else:
-                    exp_cost = 0.99 * exp_cost + 0.01 * cost
-                    exp_length = 0.99 * exp_length + 0.01 * mean_length
-                    exp_norm = 0.99 * exp_norm + 0.01 * grad_norm
-
                 cost = cost / mean_length
+                epoch_cost += cost
+                current_step += 1
 
                 if current_step % FLAGS.print_every == 0:
-                    logging.info('epoch %d, iter %d, cost %f, exp_cost %f, grad norm %f, param norm %f, tps %f, length mean/std %f/%f' %
-                                 (epoch, current_step, cost, exp_cost / exp_length, grad_norm, param_norm, tps, mean_length, std_length))
+                    logging.info('epoch %d, iter %d, cost %f, length mean/std %f/%f' % (epoch, current_step, cost, mean_length, std_length))
+
+            # One epoch average train cost
+            train_costs.append(epoch_cost / current_step)
+
+            # After one epoch average validate cost
             epoch_toc = time.time()
+            epoch_time = epoch_toc - epoch_tic
+            valid_cost = validate(model, sess, x_dev, y_dev)
+            valid_costs.append(valid_cost)
+            logging.info("Epoch %d Validation cost: %f time: %2fs" %(epoch, valid_cost, epoch_time))
 
             # Checkpoint
             checkpoint_path = os.path.join(FLAGS.train_dir, "best.ckpt")
-
-            # Validate
-            valid_cost = validate(model, sess, x_dev, y_dev)
-
-            logging.info("Epoch %d Validation cost: %f time: %f" %
-                         (epoch, valid_cost, epoch_toc - epoch_tic))
-
-            if len(previous_losses) > 2 and valid_cost > previous_losses[-1]:
-                logging.info("Annealing learning rate by %f" %
-                             FLAGS.learning_rate_decay_factor)
+            if len(previous_valid_losses) > 2 and valid_cost > previous_valid_losses[-1]:
+                logging.info("Annealing learning rate by %f" % FLAGS.learning_rate_decay_factor)
                 sess.run(model.learning_rate_decay_op)
-                model.saver.restore(
-                    sess, checkpoint_path + ("-%d" % best_epoch))
+                model.saver.restore(sess, checkpoint_path + ("-%d" % best_epoch))
             else:
-                previous_losses.append(valid_cost)
+                previous_valid_losses.append(valid_cost)
                 best_epoch = epoch
                 model.saver.save(sess, checkpoint_path, global_step=epoch)
-            sys.stdout.flush()
+
+        import cPickle as pickle
+        pickle.dump([train_costs, valid_costs], open('costs_data.pkl', 'wb'))
 
 
 def main(_):

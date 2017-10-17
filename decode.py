@@ -16,51 +16,45 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from six.moves import xrange
+from util import *
 
-import math
 import os
-import random
 import sys
 import time
+import math
+import jieba
+import kenlm
 import random
 import string
-import jieba
-
 import numpy as np
-from six.moves import xrange
 import tensorflow as tf
 
-import kenlm
-
-import nlc_model
 import nlc_data
-from util import get_tokenizer
+import nlc_model
+
 
 tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
-tf.app.flags.DEFINE_float("learning_rate_decay_factor",
-                          0.95, "Learning rate decays by this much.")
-tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
-                          "Clip gradients to this norm.")
-tf.app.flags.DEFINE_float(
-    "dropout", 0.1, "Fraction of units randomly dropped on non-recurrent connections.")
-tf.app.flags.DEFINE_integer(
-    "batch_size", 128, "Batch size to use during training.")
+tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.95, "Learning rate decays by this much.")
+tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
+tf.app.flags.DEFINE_float("dropout", 0.1, "Fraction of units randomly dropped on non-recurrent connections.")
+tf.app.flags.DEFINE_integer("batch_size", 256, "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("epochs", 0, "Number of epochs to train.")
-tf.app.flags.DEFINE_integer("size", 400, "Size of each model layer.")
-tf.app.flags.DEFINE_integer("num_layers", 3, "Number of layers in the model.")
+tf.app.flags.DEFINE_integer("size", 200, "Size of each model layer.")
+tf.app.flags.DEFINE_integer("num_layers", 2, "Number of layers in the model.")
 tf.app.flags.DEFINE_integer("max_vocab_size", 40000, "Vocabulary size limit.")
 tf.app.flags.DEFINE_integer("max_seq_len", 100, "Maximum sequence length.")
-tf.app.flags.DEFINE_string("data_dir", "/tmp", "Data directory")
-tf.app.flags.DEFINE_string("train_dir", "/tmp", "Training directory.")
-tf.app.flags.DEFINE_string(
-    "tokenizer", "CHAR", "Set to WORD to train word level model.")
+tf.app.flags.DEFINE_string("data_dir", "data_dir/data", "Data directory")
+tf.app.flags.DEFINE_string("train_dir", "data_dir/train_data", "Training directory.")
+tf.app.flags.DEFINE_string("tokenizer", "CHAR", "Set to WORD to train word level model.")
 tf.app.flags.DEFINE_integer("beam_size", 8, "Size of beam.")
-tf.app.flags.DEFINE_string("lmfile", None, "arpa file of the language model.")
+tf.app.flags.DEFINE_string("lmfile", "tsinghua.binary", "arpa file of the language model.")
 tf.app.flags.DEFINE_float("alpha", 0.3, "Language model relative weight.")
 
 FLAGS = tf.app.flags.FLAGS
-reverse_vocab, vocab = None, None
+reverse_vocab, vocab, vocab_size = None, None, None
 lm = None
+model, sess = None, None
 
 
 def create_model(session, vocab_size, forward_only):
@@ -82,8 +76,7 @@ def create_model(session, vocab_size, forward_only):
 
 def tokenize(sent, vocab, depth=FLAGS.num_layers):
     align = pow(2, depth - 1)
-    token_ids = nlc_data.sentence_to_token_ids(
-        sent, vocab, get_tokenizer(FLAGS))
+    token_ids = nlc_data.sentence_to_token_ids(sent, vocab, get_tokenizer(FLAGS))
     ones = [1] * len(token_ids)
     pad = (align - len(token_ids)) % align
 
@@ -113,9 +106,10 @@ def lm_rank(strs, probs):
     a = FLAGS.alpha
     lmscores = [lm.score(" ".join(jieba.lcut(s))) / (1 + len(jieba.lcut(s))) for s in strs]
     probs = [p / (len(s) + 1) for (s, p) in zip(strs, probs)]
-    print("Candidate:")
-    for (s, p, l) in zip(strs, probs, lmscores):
-        print(s.encode('utf-8'), p, l)
+
+    #print("Candidate:")
+    #for (s, p, l) in zip(strs, probs, lmscores):
+    #    print(s.encode('utf-8'), p, l)
 
     rescores = [(1 - a) * p + a * l for (l, p) in zip(lmscores, probs)]
     rerank = [rs[0] for rs in sorted(enumerate(rescores), key=lambda x: x[1])]
@@ -124,13 +118,6 @@ def lm_rank(strs, probs):
     nw_score = probs[rerank[-1]]
     score = rescores[rerank[-1]]
     return generated  # , score, nw_score, lm_score
-
-#  if lm is None:
-#    return strs[0]
-#  a = FLAGS.alpha
-#  rescores = [(1-a)*p + a*lm.score(s) for (s, p) in zip(strs, probs)]
-#  rerank = [rs[0] for rs in sorted(enumerate(rescores), key=lambda x:x[1])]
-#  return strs[rerank[-1]]
 
 
 def decode_beam(model, sess, encoder_output, max_beam_size):
@@ -142,23 +129,25 @@ def decode_beam(model, sess, encoder_output, max_beam_size):
 def fix_sent(model, sess, sent):
     # Tokenize
     input_toks, mask = tokenize(sent, vocab)
+
     # Encode
     encoder_output = model.encode(sess, input_toks, mask)
 
     # Decode
-    beam_toks, probs = decode_beam(
-        model, sess, encoder_output, FLAGS.beam_size)
+    beam_toks, probs = decode_beam(model, sess, encoder_output, FLAGS.beam_size)
+
     # De-tokenize
     beam_strs = detokenize(beam_toks, reverse_vocab)
+
     # Language Model ranking
     best_str = lm_rank(beam_strs, probs)
     # Return
     return best_str
 
 
-def decode():
+def load_vocab():
     # Prepare NLC data.
-    global reverse_vocab, vocab, lm
+    global reverse_vocab, vocab, vocab_size, lm
 
     if FLAGS.lmfile is not None:
         print("Loading Language model from %s" % FLAGS.lmfile)
@@ -170,28 +159,26 @@ def decode():
         FLAGS.data_dir + '/' + FLAGS.tokenizer.lower(), FLAGS.max_vocab_size,
         tokenizer=get_tokenizer(FLAGS))
     vocab, reverse_vocab = nlc_data.initialize_vocabulary(vocab_path)
+    # print(vocab)
     vocab_size = len(vocab)
     print("Vocabulary size: %d" % vocab_size)
 
-    with tf.Session() as sess:
-        print("Creating %d layers of %d units." %
-              (FLAGS.num_layers, FLAGS.size))
+
+def load_model():
+    tf.reset_default_graph()
+    global model, sess
+    print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
+    sess = tf.InteractiveSession()
+    model = create_model(sess, vocab_size, False)
+
+
+def decode(sent):
+    #tf.reset_default_graph()
+    global model, sess
+    if model == None and sess == None:
+        print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
+        sess = tf.InteractiveSession()
         model = create_model(sess, vocab_size, False)
-        import codecs
-        with codecs.open(FLAGS.data_dir+'/'+FLAGS.tokenizer.lower()+'/test.x.txt', encoding='utf-8') as fr:
-            for sent in fr:
-                print("Original: ", sent.strip().encode('utf-8'))
-                output_sent = fix_sent(model, sess, sent)
-                print("Revised: ", output_sent.encode('utf-8'))
-                print('*'*30)
-        # while True:
-        #     sent = raw_input("Enter a sentence: ")
-        #     output_sent = fix_sent(model, sess, sent.decode('utf-8'))
-        #     print("Candidate: ", output_sent)
-
-
-def main(_):
-    decode()
-
-if __name__ == "__main__":
-    tf.app.run()
+    else:
+        pass
+    return fix_sent(model, sess, sent)
