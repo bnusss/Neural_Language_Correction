@@ -15,7 +15,7 @@ def revise():
     if request.method == 'POST':
         original_res = request.get_json()
 
-        original_sent = original_res['voice_text']
+        original_sent = original_res['original_text']
         print({'original': original_sent})
         output_sent = decode(original_sent)
         evals = evaluate(original_sent, output_sent)

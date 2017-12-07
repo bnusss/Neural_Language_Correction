@@ -25,6 +25,7 @@ import time
 import math
 import jieba
 import kenlm
+import codecs
 import random
 import string
 
@@ -50,6 +51,7 @@ tf.app.flags.DEFINE_string("tokenizer", "CHAR", "Set to WORD to train word level
 tf.app.flags.DEFINE_integer("beam_size", 8, "Size of beam.")
 tf.app.flags.DEFINE_string("lmfile", "tsinghua.binary", "arpa file of the language model.")
 tf.app.flags.DEFINE_float("alpha", 0.3, "Language model relative weight.")
+tf.app.flags.DEFINE_boolean("interactive", True, "Interactive decoding")
 
 FLAGS = tf.app.flags.FLAGS
 reverse_vocab, vocab = None, None
@@ -106,6 +108,7 @@ def lm_rank(strs, probs):
     a = FLAGS.alpha
     lmscores = [lm.score(" ".join(jieba.lcut(s))) / (1 + len(jieba.lcut(s))) for s in strs]
     probs = [p / (len(s) + 1) for (s, p) in zip(strs, probs)]
+
     #print("Candidate:")
     #for (s, p, l) in zip(strs, probs, lmscores):
     #    print(s.encode('utf-8'), p, l)
@@ -167,22 +170,26 @@ def decode():
     print("Vocabulary size: %d" % vocab_size)
 
     with tf.Session() as sess:
-        print("Creating %d layers of %d units." %
-              (FLAGS.num_layers, FLAGS.size))
+        print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
         model = create_model(sess, vocab_size, False)
-        import codecs
-        with codecs.open(FLAGS.data_dir+'/'+FLAGS.tokenizer.lower()+'/valid.x.txt', encoding='utf-8') as fr1:
-            with codecs.open(FLAGS.data_dir+'/'+FLAGS.tokenizer.lower()+'/valid.y.txt', encoding='utf-8') as fr2:
-                for sent1, sent2 in zip(fr1, fr2):
-                    print("Original: ", sent1.strip().encode('utf-8'))
+        if FLAGS.interactive:
+            while True:
+                sent = raw_input("Enter a sentence: ")
+                if sent == 'exit':
+                    exit(0)
+                output_sent = fix_sent(model, sess, sent.decode('utf-8'))
+                print("Candidate: ", output_sent)
+        else:
+            test_x_data = os.path.join(FLAGS.data_dir, FLAGS.tokenizer.lower()+'/test.x.txt')
+            if not os.path.exists(test_x_data):
+                print("Please provide {} to test.".format(test_x_data))
+                exit(-1)
+            with codecs.open(test_x_data, encoding='utf-8') as fr:
+                for sent in fr:
+                    print("Original: ", sent.strip().encode('utf-8'))
                     output_sent = fix_sent(model, sess, sent1)
                     print("Revised: ", output_sent.encode('utf-8'))
-                    print("GroundTruth: ", sent2.strip().encode('utf-8'))
                     print('*'*30)
-        #while True:
-        #    sent = raw_input("Enter a sentence: ")
-        #    output_sent = fix_sent(model, sess, sent.decode('utf-8'))
-        #    print("Candidate: ", output_sent)
 
 
 def main(_):

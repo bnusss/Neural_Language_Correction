@@ -13,9 +13,16 @@ To train character level model (for chinese, we'd better only use this mode <chi
 
 **NOTICE:** "x" means orignal error sentences, "y" means revised version sentences
 
-# Interactive Decoding
+# Local Decoding
 
-    $ python decode.py --data_dir /dir/to/vocab_test/data (vocab.dat&test.x.txt) --train_dir /dir/to/save/train_data
+    $ python decode_sent.py --data_dir /dir/to/vocab_test/data (need vocab.dat&test.x.txt) --train_dir /dir/to/save/train_data # decode a file
+    $ python decode_sent.py --train_dir /dir/to/save/train_data --interactive # interactive decode
+    
+# Web Decoding
+    
+    $ export FLASK_APP=server.py; flask run --host=0.0.0.0
+
+    Now, you can post a josn-format data `{'original_text':'xxx'}` to url `http://server_ip:5000/revise`, get the revised sentence.
 
 **NOTICE:** you need use **kenlm** and **jieba<segment tools>** toolkits to create a chinese language Model (ie. .arpa file or a binary version), and then install **kenlm** python packages to load Language model and use it. You can read this [kenlm toolkits build and python package install ](https://github.com/kpu/kenlm) and [jieba chinese segmentation tools](https://github.com/whtsky/jieba/)
 

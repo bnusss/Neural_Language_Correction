@@ -88,11 +88,11 @@ venv/
 ENV/
 
 # Spyder project settings
-.spyderproject
-.spyproject
+*.spyderproject
+*.spyproject
 
 # Rope project settings
-.ropeproject
+*.ropeproject
 
 # mkdocs documentation
 /site
@@ -102,3 +102,6 @@ ENV/
 
 # vim backup files
 *[a-zA-Z]~
+
+# pickle files
+*.pkl
